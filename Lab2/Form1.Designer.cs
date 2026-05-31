@@ -213,7 +213,6 @@
             this.canvas.BackgroundImageLayout = System.Windows.Forms.ImageLayout.Stretch;
             this.canvas.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
             this.canvas.Cursor = System.Windows.Forms.Cursors.Arrow;
-            this.canvas.Image = ((System.Drawing.Image)(resources.GetObject("canvas.Image")));
             this.canvas.Location = new System.Drawing.Point(100, 42);
             this.canvas.Name = "canvas";
             this.canvas.Size = new System.Drawing.Size(582, 257);

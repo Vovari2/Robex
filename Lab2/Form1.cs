@@ -1,4 +1,4 @@
-﻿using PdfiumViewer;
+﻿
 using System;
 using System.CodeDom;
 using System.Collections.Generic;
@@ -7,12 +7,16 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.IO;
 using System.Linq;
+using System.Security.Policy;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml.Linq;
 using Tesseract;
+using UglyToad.PdfPig;
+using Spire.Pdf;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using Spire.Pdf.Graphics;
 
 namespace Lab2
 {
@@ -61,7 +65,7 @@ namespace Lab2
         private Stack<Operation> history = new Stack<Operation>();
         private Operation currentOperation = null;
 
-        private PdfDocument canvasDocument;
+        private Spire.Pdf.PdfDocument canvasDocument;
         private Bitmap canvasImage;
         private Graphics canvasGraphics;
 
@@ -100,25 +104,21 @@ namespace Lab2
             else if (fileName.isPDF())
             {
                 Text = string.Format("{0} ({1})", APPLICATION_NAME, openedFileName);
-                canvasDocument = PdfDocument.Load(openedFileName);
+                canvasDocument = new Spire.Pdf.PdfDocument();
+                canvasDocument.LoadFromFile(openedFileName);
 
-                var pageSize = canvasDocument.PageSizes[0];
-                int dpi = 150;
-                int width = (int)(pageSize.Width * dpi / 72);
-                int height = (int)(pageSize.Height * dpi / 72);
-
-                using (var renderer = canvasDocument.Render(0, dpi, dpi, PdfRenderFlags.ForPrinting))
+                using (Image renderedPage = canvasDocument.SaveAsImage(0, Spire.Pdf.Graphics.PdfImageType.Bitmap, pdfDPI, pdfDPI))
                 {
-                    canvasImage = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+                    canvasImage = new Bitmap(renderedPage.Width, renderedPage.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
                     pictureWidth = canvasImage.Width;
                     pictureHeight = canvasImage.Height;
 
-                    using (Graphics g = Graphics.FromImage(canvasImage))
-                    {
-                        g.Clear(Color.White);
-                        g.DrawImage(renderer, 0, 0);
-                    }
+                    canvasGraphics = Graphics.FromImage(canvasImage);
+                    canvasGraphics.Clear(Color.White);
+                    canvasGraphics.DrawImage(renderedPage, 0, 0, canvasImage.Width, canvasImage.Height);
                 }
+                canvas.Image = canvasImage;
+                recognizeEvent();
             }
             else
             {
@@ -412,6 +412,7 @@ namespace Lab2
         private async void recognizeEvent()
         {
             string lang = langBox.Text.ToLower();
+            textResult.Text = "Загрузка...";
             if (fileName.isEmpty() || fileName.isPNG())
             {
                 string result = await Task.Run(() => recognizeBitmap(canvasImage, lang));
@@ -419,21 +420,21 @@ namespace Lab2
             }
             else if (fileName.isPDF())
             {
-                textResult.Text = recognizePDF(lang);
+                string result = await Task.Run(() => recognizePDF(lang));
+                textResult.Text = result;
             }
 
         }
         private string recognizePDF(string lang)
         {
-            int pageCount = canvasDocument.PageCount;
+            int pageCount = canvasDocument.Pages.Count;
             string result = "";
+
             for (int i = 0; i < pageCount; i++)
             {
                 using (Bitmap bitmap = renderPDFPageToBitmap(i))
                 {
-
                     string pageText = recognizeBitmap(bitmap, lang);
-
                     if (!string.IsNullOrWhiteSpace(pageText))
                     {
                         result += $"--- Страница {i + 1} ---\n";
@@ -443,25 +444,21 @@ namespace Lab2
             }
             return result;
         }
+
         private int pdfDPI = 150;
         private Bitmap renderPDFPageToBitmap(int index)
         {
-            var pageSize = canvasDocument.PageSizes[index];
-
-            int width = (int)(pageSize.Width * pdfDPI / 72);
-            int height = (int)(pageSize.Height * pdfDPI / 72);
-
-            using (var renderer = canvasDocument.Render(index, pdfDPI, pdfDPI, PdfRenderFlags.ForPrinting))
+            Image renderedImage = canvasDocument.SaveAsImage(index, PdfImageType.Bitmap, pdfDPI, pdfDPI);
+            Bitmap bmp = new Bitmap(renderedImage.Width, renderedImage.Height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
+            using (Graphics g = Graphics.FromImage(bmp))
             {
-                Bitmap bmp = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format24bppRgb);
-                using (Graphics g = Graphics.FromImage(bmp))
-                {
-                    g.Clear(Color.White);
-                    g.DrawImage(renderer, 0, 0, width, height);
-                }
-
-                return bmp;
+                g.Clear(Color.White);
+                g.DrawImage(renderedImage, 0, 0, bmp.Width, bmp.Height);
             }
+
+            renderedImage.Dispose();
+
+            return bmp;
         }
 
         private string recognizeBitmap(Bitmap bmp, string lang)
